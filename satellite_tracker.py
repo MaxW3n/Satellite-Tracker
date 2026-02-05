@@ -97,7 +97,7 @@ def main():
             i["sat_id"] = sat_id
         all_passes.extend(passes)
 
-    print(f"Found {len(passes)} passes:\n")
+    print(f"Found {len(all_passes)} passes:\n")
     print(json.dumps(all_passes, indent=2))
 
 
