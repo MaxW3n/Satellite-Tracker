@@ -3,6 +3,7 @@ import requests
 import json
 import os
 from dotenv import load_dotenv
+from datetime import datetime
 
 load_dotenv()
 API_KEY = os.environ.get("N2YO_API_KEY")
@@ -35,6 +36,8 @@ def get_satellite_passes(lat, lon, satellite_id, days, min_elevation, api_key):
     
     return data.get("passes", [])
 
+def format_time(timestamp):
+    return datetime.fromtimestamp(timestamp).strftime("%H:%M:%S UTC %b/%d/%Y")
     
 def main():
     parser = argparse.ArgumentParser(description="Track satellites in passes")
@@ -62,6 +65,7 @@ def main():
         "-s", "--satellite-ids",
         default=None,
         nargs="*",
+        type=int,
         help="Specific satellite to track"
     )
 
@@ -71,7 +75,8 @@ def main():
     print("=" * 40)
     print(f"Location: {args.location}")
     print(f"Looking ahead: {args.days} days")
-    print(f"Minimum elevation: {args.min_elevation}°\n")
+    print(f"Minimum elevation: {args.min_elevation}°")
+    
 
     if args.satellite_ids == None or len(args.satellite_ids) == 0:
         satellite_ids = list(SATELLITES.values())
@@ -79,6 +84,7 @@ def main():
     else:
         satellite_ids = args.satellite_ids
         print(f"Tracking {len(satellite_ids)} specific satellite(s)") 
+    print("=" * 40)
 
     lat, lon = map(float, args.location.split(","))
     
@@ -95,10 +101,20 @@ def main():
         )
         for i in passes:
             i["sat_id"] = sat_id
+            
         all_passes.extend(passes)
 
-    print(f"Found {len(all_passes)} passes:\n")
-    print(json.dumps(all_passes, indent=2))
+    sorted_passes = sorted(all_passes, key=lambda i: i["startUTC"])
+    
+    #Cleaning data
+    for i in sorted_passes:
+        i["duration"] = f"{(i["endUTC"] - i["startUTC"]) // 60}m {(i["endUTC"] - i["startUTC"]) % 60}s"
+        i["startUTC"] = format_time(i.get("startUTC"))
+        i["maxUTC"] = format_time(i.get("maxUTC"))
+        i["endUTC"] = format_time(i.get("endUTC"))
+    
+    print(f"Found {len(sorted_passes)} passes:\n")
+    print(json.dumps(sorted_passes, indent=2))
 
 
 if __name__ == "__main__":
