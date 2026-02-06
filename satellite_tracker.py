@@ -36,6 +36,23 @@ def get_satellite_passes(lat, lon, satellite_id, days, min_elevation, api_key):
     
     return data.get("passes", [])
 
+def NORAD_to_name(NORAD_id, api_key):
+    """Converts NORAD id to satellite name"""
+    url = f"https://api.n2yo.com/rest/v1/satellite/tle/{NORAD_id}"
+
+    response = requests.get(url, params={"apiKey": api_key})
+
+    if response.status_code != 200:
+        print(f"Error: API returned {response.status_code}")
+        return "Unknown"
+    
+    data = response.json().get("info", {})
+
+    # Debugging
+    # print(data)
+
+    return data.get("satname", "Unknown")
+
 def format_time(timestamp):
     return datetime.fromtimestamp(timestamp).strftime("%H:%M:%S UTC %b/%d/%Y")
 
@@ -143,7 +160,8 @@ def main():
             api_key=API_KEY
         )
         for i in passes:
-            i["sat_id"] = sat_id
+            i["sat_info"] = f"{NORAD_to_name(sat_id, API_KEY)} ({sat_id})"
+
             
         all_passes.extend(passes)
 
