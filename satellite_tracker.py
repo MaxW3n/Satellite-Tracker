@@ -38,7 +38,33 @@ def get_satellite_passes(lat, lon, satellite_id, days, min_elevation, api_key):
 
 def format_time(timestamp):
     return datetime.fromtimestamp(timestamp).strftime("%H:%M:%S UTC %b/%d/%Y")
+
+def city_to_coords(city):
+    """Convert city names to decimal coordinates."""
+    url="https://nominatim.openstreetmap.org/search"
     
+    headers = {"User-Agent": "SatelliteTracker/1.0"}
+    
+    response = requests.get(url, 
+        params={
+            "q": city, 
+            "format": "json",
+            "limit": 1},
+        headers=headers
+    )
+
+    if response.status_code != 200:
+        print(f"Error: API returned {response.status_code}")
+        return ""
+    
+    data = response.json()
+
+    if not data:
+        return None, None
+    
+    coords = data[0]
+    return coords["lat"], coords["lon"]
+
 def main():
     parser = argparse.ArgumentParser(description="Track satellites in passes")
     
@@ -70,10 +96,29 @@ def main():
     )
 
     args = parser.parse_args()
+
+    # Check whether coordinates or city was given in args.location
+    if "," in args.location:
+        try:
+            lat, lon = map(float, args.location.split(","))
+        except ValueError:
+            location_name = args.location
+
+            lat, lon = city_to_coords(args.location)
+            if lat is None:
+                print(f"Error: City '{location_name}' was not found")
+                return
+    else:
+        location_name = args.location
+
+        lat, lon = city_to_coords(args.location)
+        if lat is None:
+            print(f"Error: City '{location_name}' was not found")
+            return
     
     print("Satellite Tracker v1.0")
     print("=" * 40)
-    print(f"Location: {args.location}")
+    print(f"Location: {args.location} ({lat}, {lon})")
     print(f"Looking ahead: {args.days} days")
     print(f"Minimum elevation: {args.min_elevation}°")
     
@@ -85,8 +130,6 @@ def main():
         satellite_ids = args.satellite_ids
         print(f"Tracking {len(satellite_ids)} specific satellite(s)") 
     print("=" * 40)
-
-    lat, lon = map(float, args.location.split(","))
     
     all_passes = []
     
