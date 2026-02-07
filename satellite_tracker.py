@@ -44,7 +44,8 @@ def main():
             lat, lon = map(float, args.location.split(","))
         except ValueError:
             pass
-    elif lat is None:
+    
+    if lat is None:
         location_name = args.location
 
         lat, lon = city_to_coords(args.location)
@@ -89,7 +90,7 @@ def main():
     print(f"Location: {args.location} ({lat}, {lon})")
     print(f"Looking ahead: {args.days} days")
     print(f"Minimum elevation: {args.min_elevation}°")
-    print(f"Satellites tracked: {', '.join([i.get('sat_info') for i in sorted_passes])}")
+    print(f"Satellites tracked: {', '.join(set(i.get('sat_info') for i in sorted_passes))}")
     print("=" * 40)
     print(f"Found {len(sorted_passes)} passes:\n")
     print(json.dumps(sorted_passes, indent=2))
