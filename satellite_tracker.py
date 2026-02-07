@@ -1,86 +1,9 @@
 import argparse
-import requests
 import json
-import os
-from dotenv import load_dotenv
-from datetime import datetime
+from config import SATELLITES, DEFAULT_ELEV, DEFAULT_TIME, API_KEY
+from n2yo_service import get_satellite_passes, NORAD_to_name
+from formatting_service import format_time, city_to_coords
 
-load_dotenv()
-API_KEY = os.environ.get("N2YO_API_KEY")
-
-SATELLITES = {
-    "ISS": 25544,
-    "NOAA 19": 33591,
-    "NOAA 18": 28654,
-    "NOAA 15": 25338,
-    "METOP-B": 38771,
-    "METOP-C": 43689,
-    "AQUA": 27424,
-    "TERRA": 25994,
-    "SUOMI NPP": 37849,
-    "ENVISAT": 27386,
-    "LANDSAT 8": 39084
-}
-
-def get_satellite_passes(lat, lon, satellite_id, days, min_elevation, api_key):
-    """Fetch satellite data from N2YO API"""
-    url = f"https://api.n2yo.com/rest/v1/satellite/radiopasses/{satellite_id}/{lat}/{lon}/0/{days}/{min_elevation}"
-
-    response = requests.get(url, params={"apiKey": api_key})
-    
-    if response.status_code != 200:
-        print(f"Error: API returned {response.status_code}")
-        return []
-    
-    data = response.json()
-    
-    return data.get("passes", [])
-
-def NORAD_to_name(NORAD_id, api_key):
-    """Converts NORAD id to satellite name"""
-    url = f"https://api.n2yo.com/rest/v1/satellite/tle/{NORAD_id}"
-
-    response = requests.get(url, params={"apiKey": api_key})
-
-    if response.status_code != 200:
-        print(f"Error: API returned {response.status_code}")
-        return "Unknown"
-    
-    data = response.json().get("info", {})
-
-    # Debugging
-    # print(data)
-
-    return data.get("satname", "Unknown")
-
-def format_time(timestamp):
-    return datetime.fromtimestamp(timestamp).strftime("%H:%M:%S UTC %b/%d/%Y")
-
-def city_to_coords(city):
-    """Convert city names to decimal coordinates."""
-    url="https://nominatim.openstreetmap.org/search"
-    
-    headers = {"User-Agent": "SatelliteTracker/1.0"}
-    
-    response = requests.get(url, 
-        params={
-            "q": city, 
-            "format": "json",
-            "limit": 1},
-        headers=headers
-    )
-
-    if response.status_code != 200:
-        print(f"Error: API returned {response.status_code}")
-        return ""
-    
-    data = response.json()
-
-    if not data:
-        return None, None
-    
-    coords = data[0]
-    return coords["lat"], coords["lon"]
 
 def main():
     parser = argparse.ArgumentParser(description="Track satellites in passes")
@@ -95,18 +18,18 @@ def main():
     parser.add_argument(
         "-d", "--days", 
         type=int, 
-        default=7,
+        default=DEFAULT_TIME,
         help="Days to scrap ahead"
     )
     parser.add_argument(
         "-e", "--min-elevation",
         type=float,
-        default=30,
+        default=DEFAULT_ELEV,
         help="Minimum elevation in degrees"
     )
     parser.add_argument(
         "-s", "--satellite-ids",
-        default=None,
+        default=list(SATELLITES.keys()),
         nargs="*",
         type=int,
         help="Specific satellite to track"
@@ -115,17 +38,13 @@ def main():
     args = parser.parse_args()
 
     # Check whether coordinates or city was given in args.location
+    lat, lon = None, None
     if "," in args.location:
         try:
             lat, lon = map(float, args.location.split(","))
         except ValueError:
-            location_name = args.location
-
-            lat, lon = city_to_coords(args.location)
-            if lat is None:
-                print(f"Error: City '{location_name}' was not found")
-                return
-    else:
+            pass
+    elif lat is None:
         location_name = args.location
 
         lat, lon = city_to_coords(args.location)
@@ -133,24 +52,10 @@ def main():
             print(f"Error: City '{location_name}' was not found")
             return
     
-    print("Satellite Tracker v1.0")
-    print("=" * 40)
-    print(f"Location: {args.location} ({lat}, {lon})")
-    print(f"Looking ahead: {args.days} days")
-    print(f"Minimum elevation: {args.min_elevation}°")
-    
-
-    if args.satellite_ids == None or len(args.satellite_ids) == 0:
-        satellite_ids = list(SATELLITES.values())
-        print(f"Tracking all {len(satellite_ids)} major satellites")
-    else:
-        satellite_ids = args.satellite_ids
-        print(f"Tracking {len(satellite_ids)} specific satellite(s)") 
-    print("=" * 40)
-    
+    # Find passes
     all_passes = []
     
-    for sat_id in satellite_ids:
+    for sat_id in args.satellite_ids:
         passes = get_satellite_passes(
             lat=lat, 
             lon=lon, 
@@ -159,10 +64,15 @@ def main():
             min_elevation=args.min_elevation, 
             api_key=API_KEY
         )
-        for i in passes:
-            i["sat_info"] = f"{NORAD_to_name(sat_id, API_KEY)} ({sat_id})"
 
-            
+        sat_name = SATELLITES.get(sat_id)
+
+        if sat_name is None:
+            sat_name = NORAD_to_name(sat_id, API_KEY)
+        
+        for i in passes:
+            i["sat_info"] = f"{sat_name} ({sat_id})"
+ 
         all_passes.extend(passes)
 
     sorted_passes = sorted(all_passes, key=lambda i: i["startUTC"])
@@ -174,6 +84,13 @@ def main():
         i["maxUTC"] = format_time(i.get("maxUTC"))
         i["endUTC"] = format_time(i.get("endUTC"))
     
+    print("Satellite Tracker v1.0")
+    print("=" * 40)
+    print(f"Location: {args.location} ({lat}, {lon})")
+    print(f"Looking ahead: {args.days} days")
+    print(f"Minimum elevation: {args.min_elevation}°")
+    print(f"Satellites tracked: {', '.join([i.get('sat_info') for i in sorted_passes])}")
+    print("=" * 40)
     print(f"Found {len(sorted_passes)} passes:\n")
     print(json.dumps(sorted_passes, indent=2))
 
